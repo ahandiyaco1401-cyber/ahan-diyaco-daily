@@ -1,5 +1,4 @@
 name: Daily Telegram Calendar
-date
 on:
   schedule:
     - cron: '30 5 * * *'
