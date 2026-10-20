@@ -26,7 +26,7 @@ quotes = [
 ]
 
 def fa(text):
-    return get_display(arabic_reshaper.reshape(str(text)))
+    return arabic_reshaper.reshape(str(text))
 
 def font(size):
     paths = [
@@ -61,7 +61,7 @@ def centered(text, y, fnt, fill):
         fill=fill,
         anchor="mm"
     )
-
+direction="rtl"
 centered("آهن استحکام دیاکو", 175, font(62), ORANGE)
 centered("AHAN ESTEHKAM DIYACO", 235, font(29), WHITE)
 
