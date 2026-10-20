@@ -1,0 +1,36 @@
+name: Daily Telegram Calendar
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-core
+
+      - name: Install Python libraries
+        run: |
+          pip install Pillow requests jdatetime arabic-reshaper python-bidi
+
+      - name: Publish calendar to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+        run: python daily_calendar.py
