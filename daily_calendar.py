@@ -1,21 +1,21 @@
 import os
-import glob
 import requests
 import jdatetime
-import arabic_reshaper
-from bidi.algorithm import get_display
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, features
 
-# ابعاد تصویر
+# بررسی پشتیبانی از نمایش صحیح فارسی
+if not features.check("raqm"):
+    raise RuntimeError(
+        "محیط اجرا از پردازش صحیح متن فارسی پشتیبانی نمی‌کند."
+    )
+
 W, H = 1080, 1350
 
-# رنگ‌بندی صنعتی
 BG = (22, 27, 34)
 ORANGE = (238, 145, 48)
 WHITE = (250, 250, 250)
 GRAY = (190, 195, 202)
 
-# جملات انگیزشی
 quotes = [
     "موفقیت از اعتماد، تعهد و تلاش مستمر ساخته می‌شود.",
     "کیفیت امروز، اعتبار فردای کسب‌وکار شماست.",
@@ -29,40 +29,42 @@ quotes = [
     "کیفیت، امضای ماندگار یک کسب‌وکار است."
 ]
 
-# اصلاح نوشتار فارسی و جهت متن
-def fa(text):
-    shaped = arabic_reshaper.reshape(str(text))
-    return get_display(shaped)
+FONT_PATH = (
+    "/usr/share/fonts/truetype/noto/"
+    "NotoNaskhArabic-Regular.ttf"
+)
 
-# پیدا کردن فونت مناسب فارسی
+if not os.path.exists(FONT_PATH):
+    raise FileNotFoundError("فونت فارسی مناسب پیدا نشد.")
+
 def font(size):
-    paths = [
-        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    ]
+    return ImageFont.truetype(FONT_PATH, size)
 
-    for path in paths:
-        if os.path.exists(path):
-            return ImageFont.truetype(path, size)
-
-    found = glob.glob(
-        "/usr/share/fonts/**/*Arabic*Regular*.ttf",
-        recursive=True
-    )
-
-    if found:
-        return ImageFont.truetype(found[0], size)
-
-    raise RuntimeError("فونت مناسب پیدا نشد.")
-
-# تاریخ
 now = jdatetime.datetime.now()
-gregorian = now.togregorian()
 
-# ایجاد تصویر
 img = Image.new("RGB", (W, H), BG)
 draw = ImageDraw.Draw(img)
+
+def text_width(text, fnt):
+    box = draw.textbbox(
+        (0, 0),
+        text,
+        font=fnt,
+        direction="rtl",
+        language="fa"
+    )
+    return box[2] - box[0]
+
+def centered(text, y, fnt, color):
+    draw.text(
+        (W // 2, y),
+        text,
+        font=fnt,
+        fill=color,
+        anchor="mm",
+        direction="rtl",
+        language="fa"
+    )
 
 # کادر اصلی
 draw.rounded_rectangle(
@@ -73,24 +75,21 @@ draw.rounded_rectangle(
 )
 
 draw.rounded_rectangle(
-    (65, 70, W - 65, 88),
+    (70, 70, W - 70, 88),
     radius=8,
     fill=ORANGE
 )
 
-# نوشتن متن در مرکز تصویر
-def centered(text, y, fnt, color):
-    draw.text(
-        (W // 2, y),
-        fa(text),
-        font=fnt,
-        fill=color,
-        anchor="mm"
-    )
-
-# سربرگ
+# سربرگ شرکت
 centered("آهن استحکام دیاکو", 165, font(60), ORANGE)
-centered("AHAN ESTEHKAM DIYACO", 225, font(28), WHITE)
+
+draw.text(
+    (W // 2, 225),
+    "AHAN ESTEHKAM DIYACO",
+    font=font(28),
+    fill=WHITE,
+    anchor="mm"
+)
 
 draw.line(
     (140, 280, W - 140, 280),
@@ -98,91 +97,59 @@ draw.line(
     width=3
 )
 
-# عنوان تقویم
+# عنوان و تاریخ شمسی
 centered("تقویم روزانه", 350, font(46), WHITE)
 
-# تاریخ شمسی و میلادی
 centered(
     now.strftime("%Y/%m/%d"),
-    435,
-    font(43),
+    440,
+    font(45),
     ORANGE
 )
 
-centered(
-    gregorian.strftime("%Y/%m/%d"),
-    495,
-    font(32),
-    GRAY
-)
-
-# کادر جمله انگیزشی
+# کادر جمله روز
 draw.rounded_rectangle(
-    (85, 590, W - 85, 970),
+    (85, 580, W - 85, 970),
     radius=28,
     outline=ORANGE,
     width=3
 )
 
-# انتخاب جمله روز
 quote = quotes[now.timetuple().tm_yday % len(quotes)]
-
-# شکستن جمله به خطوط متناسب با عرض کادر
 quote_font = font(40)
+
+# تقسیم جمله با حفظ پردازش صحیح فارسی
 words = quote.split()
 lines = []
-current_line = ""
+current = ""
 
 for word in words:
-    candidate = (current_line + " " + word).strip()
-    displayed = fa(candidate)
+    candidate = (current + " " + word).strip()
 
-    box = draw.textbbox(
-        (0, 0),
-        displayed,
-        font=quote_font
-    )
-
-    width = box[2] - box[0]
-
-    if width <= 820:
-        current_line = candidate
+    if text_width(candidate, quote_font) <= 820:
+        current = candidate
     else:
-        if current_line:
-            lines.append(current_line)
-        current_line = word
+        if current:
+            lines.append(current)
+        current = word
 
-if current_line:
-    lines.append(current_line)
+if current:
+    lines.append(current)
 
-# قرار دادن خطوط در مرکز کادر
 line_height = 78
-total_height = (len(lines) - 1) * line_height
-start_y = 780 - total_height // 2
+start_y = 775 - (len(lines) - 1) * line_height // 2
 
-for index, line in enumerate(lines):
+for i, line in enumerate(lines):
     centered(
         line,
-        start_y + index * line_height,
+        start_y + i * line_height,
         quote_font,
         WHITE
     )
 
-# اطلاعات پایانی
-centered(
-    "اعتماد | کیفیت | تعهد",
-    1050,
-    font(35),
-    ORANGE
-)
-
-centered(
-    "@ahandiyaco1401",
-    1130,
-    font(29),
-    GRAY
-)
-
+# بخش پایانی
+centered("اعتماد | کیفیت | تعهد", 1050, font(35), ORANGE)
+centered("@ahandiyaco1401", 1130, font(29), GRAY)
 centered(
     "همراه شما در تأمین محصولات فولادی",
     1210,
@@ -193,7 +160,7 @@ centered(
 # ذخیره تصویر
 img.save("daily_calendar.png")
 
-# ارسال به تلگرام
+# ارسال به کانال
 token = os.environ["TELEGRAM_BOT_TOKEN"]
 channel = os.environ["TELEGRAM_CHANNEL"]
 
@@ -213,11 +180,7 @@ with open("daily_calendar.png", "rb") as photo:
 
 response.raise_for_status()
 
-result = response.json()
-
-if not result.get("ok"):
-    raise RuntimeError(
-        "ارسال تصویر ناموفق بود: " + str(result)
-    )
+if not response.json().get("ok"):
+    raise RuntimeError("انتشار تصویر در تلگرام ناموفق بود.")
 
 print("تقویم روزانه با موفقیت منتشر شد.")
