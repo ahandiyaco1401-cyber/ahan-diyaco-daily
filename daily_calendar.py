@@ -1,22 +1,21 @@
-import os
+ import os
+import html
+import asyncio
 import requests
 import jdatetime
-from PIL import Image, ImageDraw, ImageFont, features
 
-# بررسی پشتیبانی از نمایش صحیح فارسی
-if not features.check("raqm"):
-    raise RuntimeError(
-        "محیط اجرا از پردازش صحیح متن فارسی پشتیبانی نمی‌کند."
-    )
+from playwright.async_api import async_playwright
 
-W, H = 1080, 1350
 
-BG = (22, 27, 34)
-ORANGE = (238, 145, 48)
-WHITE = (250, 250, 250)
-GRAY = (190, 195, 202)
+W = 1080
+H = 1350
 
-quotes = [
+ORANGE = "#EE9130"
+BG = "#161B22"
+WHITE = "#FAFAFA"
+GRAY = "#BEC3CA"
+
+QUOTES = [
     "موفقیت از اعتماد، تعهد و تلاش مستمر ساخته می‌شود.",
     "کیفیت امروز، اعتبار فردای کسب‌وکار شماست.",
     "اعتماد مشتری، ارزشمندترین سرمایه ماست.",
@@ -29,158 +28,261 @@ quotes = [
     "کیفیت، امضای ماندگار یک کسب‌وکار است."
 ]
 
-FONT_PATH = (
-    "/usr/share/fonts/truetype/noto/"
-    "NotoNaskhArabic-Regular.ttf"
-)
 
-if not os.path.exists(FONT_PATH):
-    raise FileNotFoundError("فونت فارسی مناسب پیدا نشد.")
+def create_html():
+    now = jdatetime.datetime.now()
+    gregorian = now.togregorian()
 
-def font(size):
-    return ImageFont.truetype(FONT_PATH, size)
+    quote = QUOTES[now.timetuple().tm_yday % len(QUOTES)]
 
-now = jdatetime.datetime.now()
+    jalali_date = html.escape(now.strftime("%Y/%m/%d"))
+    gregorian_date = html.escape(gregorian.strftime("%Y/%m/%d"))
+    quote = html.escape(quote)
 
-img = Image.new("RGB", (W, H), BG)
-draw = ImageDraw.Draw(img)
+    return f"""<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
 
-def text_width(text, fnt):
-    box = draw.textbbox(
-        (0, 0),
-        text,
-        font=fnt,
-        direction="rtl",
-        language="fa"
-    )
-    return box[2] - box[0]
+<style>
+* {{
+    box-sizing: border-box;
+}}
 
-def centered(text, y, fnt, color):
-    draw.text(
-        (W // 2, y),
-        text,
-        font=fnt,
-        fill=color,
-        anchor="mm",
-        direction="rtl",
-        language="fa"
-    )
+html, body {{
+    margin: 0;
+    padding: 0;
+    width: {W}px;
+    height: {H}px;
+}}
 
-# کادر اصلی
-draw.rounded_rectangle(
-    (30, 30, W - 30, H - 30),
-    radius=32,
-    outline=ORANGE,
-    width=5
-)
+body {{
+    background: {BG};
+    color: {WHITE};
+    font-family: "Noto Naskh Arabic", "Noto Sans Arabic", sans-serif;
+    direction: rtl;
+}}
 
-draw.rounded_rectangle(
-    (70, 70, W - 70, 88),
-    radius=8,
-    fill=ORANGE
-)
+.poster {{
+    position: relative;
+    width: {W}px;
+    height: {H}px;
+    overflow: hidden;
+    text-align: center;
+    background: {BG};
+}}
 
-# سربرگ شرکت
-centered("آهن استحکام دیاکو", 165, font(60), ORANGE)
+.frame {{
+    position: absolute;
+    inset: 30px;
+    border: 5px solid {ORANGE};
+    border-radius: 32px;
+}}
 
-draw.text(
-    (W // 2, 225),
-    "AHAN ESTEHKAM DIYACO",
-    font=font(28),
-    fill=WHITE,
-    anchor="mm"
-)
+.top-line {{
+    position: absolute;
+    top: 70px;
+    right: 70px;
+    left: 70px;
+    height: 14px;
+    background: {ORANGE};
+    border-radius: 8px;
+}}
 
-draw.line(
-    (140, 280, W - 140, 280),
-    fill=ORANGE,
-    width=3
-)
+.brand {{
+    position: absolute;
+    top: 125px;
+    width: 100%;
+    color: {ORANGE};
+    font-size: 60px;
+    font-weight: bold;
+}}
 
-# عنوان و تاریخ شمسی
-centered("تقویم روزانه", 350, font(46), WHITE)
+.english {{
+    position: absolute;
+    top: 215px;
+    width: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 28px;
+    direction: ltr;
+    color: {WHITE};
+}}
 
-centered(
-    now.strftime("%Y/%m/%d"),
-    440,
-    font(45),
-    ORANGE
-)
+.divider {{
+    position: absolute;
+    top: 280px;
+    right: 140px;
+    left: 140px;
+    border-top: 3px solid {ORANGE};
+}}
 
-# کادر جمله روز
-draw.rounded_rectangle(
-    (85, 580, W - 85, 970),
-    radius=28,
-    outline=ORANGE,
-    width=3
-)
+.title {{
+    position: absolute;
+    top: 310px;
+    width: 100%;
+    font-size: 46px;
+}}
 
-quote = quotes[now.timetuple().tm_yday % len(quotes)]
-quote_font = font(40)
+.jalali {{
+    position: absolute;
+    top: 400px;
+    width: 100%;
+    font-size: 45px;
+    color: {ORANGE};
+    direction: ltr;
+}}
 
-# تقسیم جمله با حفظ پردازش صحیح فارسی
-words = quote.split()
-lines = []
-current = ""
+.gregorian {{
+    position: absolute;
+    top: 465px;
+    width: 100%;
+    font-size: 30px;
+    color: {GRAY};
+    direction: ltr;
+}}
 
-for word in words:
-    candidate = (current + " " + word).strip()
+.quote-box {{
+    position: absolute;
+    top: 580px;
+    right: 85px;
+    left: 85px;
+    height: 390px;
+    border: 3px solid {ORANGE};
+    border-radius: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 45px;
+}}
 
-    if text_width(candidate, quote_font) <= 820:
-        current = candidate
-    else:
-        if current:
-            lines.append(current)
-        current = word
+.quote {{
+    width: 100%;
+    font-size: 42px;
+    line-height: 2;
+    text-align: center;
+    overflow-wrap: break-word;
+}}
 
-if current:
-    lines.append(current)
+.values {{
+    position: absolute;
+    top: 1010px;
+    width: 100%;
+    color: {ORANGE};
+    font-size: 35px;
+}}
 
-line_height = 78
-start_y = 775 - (len(lines) - 1) * line_height // 2
+.telegram {{
+    position: absolute;
+    top: 1090px;
+    width: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 29px;
+    color: {GRAY};
+    direction: ltr;
+}}
 
-for i, line in enumerate(lines):
-    centered(
-        line,
-        start_y + i * line_height,
-        quote_font,
-        WHITE
-    )
+.footer {{
+    position: absolute;
+    top: 1170px;
+    width: 100%;
+    font-size: 28px;
+}}
+</style>
+</head>
 
-# بخش پایانی
-centered("اعتماد | کیفیت | تعهد", 1050, font(35), ORANGE)
-centered("@ahandiyaco1401", 1130, font(29), GRAY)
-centered(
-    "همراه شما در تأمین محصولات فولادی",
-    1210,
-    font(28),
-    WHITE
-)
+<body>
+<div class="poster">
 
-# ذخیره تصویر
-img.save("daily_calendar.png")
+    <div class="frame"></div>
+    <div class="top-line"></div>
 
-# ارسال به کانال
-token = os.environ["TELEGRAM_BOT_TOKEN"]
-channel = os.environ["TELEGRAM_CHANNEL"]
+    <div class="brand">آهن استحکام دیاکو</div>
 
-with open("daily_calendar.png", "rb") as photo:
-    response = requests.post(
-        f"https://api.telegram.org/bot{token}/sendPhoto",
-        data={
-            "chat_id": channel,
-            "caption": (
-                "آهن استحکام دیاکو | تقویم روزانه | "
-                + now.strftime("%Y/%m/%d")
-            )
-        },
-        files={"photo": photo},
-        timeout=60
-    )
+    <div class="english">AHAN ESTEHKAM DIYACO</div>
 
-response.raise_for_status()
+    <div class="divider"></div>
 
-if not response.json().get("ok"):
-    raise RuntimeError("انتشار تصویر در تلگرام ناموفق بود.")
+    <div class="title">تقویم روزانه</div>
 
-print("تقویم روزانه با موفقیت منتشر شد.")
+    <div class="jalali">{jalali_date}</div>
+
+    <div class="gregorian">{gregorian_date}</div>
+
+    <div class="quote-box">
+        <div class="quote">{quote}</div>
+    </div>
+
+    <div class="values">اعتماد | کیفیت | تعهد</div>
+
+    <div class="telegram">@ahandiyaco1401</div>
+
+    <div class="footer">
+        همراه شما در تأمین محصولات فولادی
+    </div>
+
+</div>
+</body>
+</html>"""
+
+
+async def make_image():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+
+        page = await browser.new_page(
+            viewport={"width": W, "height": H},
+            device_scale_factor=1
+        )
+
+        await page.set_content(
+            create_html(),
+            wait_until="load"
+        )
+
+        await page.screenshot(
+            path="daily_calendar.png",
+            full_page=False
+        )
+
+        await browser.close()
+
+
+def send_to_telegram():
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    channel = os.environ["TELEGRAM_CHANNEL"]
+
+    now = jdatetime.datetime.now()
+
+    with open("daily_calendar.png", "rb") as photo:
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/sendPhoto",
+            data={
+                "chat_id": channel,
+                "caption": (
+                    "آهن استحکام دیاکو | تقویم روزانه | "
+                    + now.strftime("%Y/%m/%d")
+                )
+            },
+            files={"photo": photo},
+            timeout=60
+        )
+
+    response.raise_for_status()
+
+    result = response.json()
+
+    if not result.get("ok"):
+        raise RuntimeError(
+            "ارسال تصویر ناموفق بود: " + str(result)
+        )
+
+    print("تقویم با موفقیت در تلگرام منتشر شد.")
+
+
+async def main():
+    await make_image()
+    send_to_telegram()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
