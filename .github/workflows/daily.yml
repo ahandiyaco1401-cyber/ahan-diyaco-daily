@@ -27,7 +27,9 @@ jobs:
       - name: Install Python libraries
         run: |
           pip install Pillow requests jdatetime arabic-reshaper python-bidi
-
+      - name: Check Persian text support
+        run: |
+          python -c "from PIL import features; assert features.check('raqm'), 'Persian text support is unavailable'; print('Persian text support is ready')"
       - name: Publish calendar to Telegram
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
